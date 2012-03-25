@@ -251,7 +251,7 @@ sub put_app_in_dmg {
     if (-f "/tmp/$dmg.udzo.dmg") {
         unlink("/tmp/$dmg") && rename("/tmp/$dmg.udzo.dmg", "/tmp/$dmg");
     }
-    print "Completed packaging /tmp/$dmg\n";
+    print("Wrote /tmp/$dmg\n");
 }
 
 package XulPackager::windows;
@@ -271,6 +271,7 @@ sub package {
 }
 
 sub copy_xul_framework {
+    ::VERBOSE("Installing xulrunner");
     my $xul_zip = Archive::Zip->new($::app->{engine}{windows});
     $xul_zip->extractTree();
     copy("xulrunner/xulrunner-stub.exe", $::app->{name}.".exe");
@@ -361,14 +362,27 @@ EOF
     if (-f $out) {
         move($out, "/tmp/$out");
     }
+    print("Wrote /tmp/$out\n");
 }
 
 package XulPackager::linux;
 use Archive::Tar;
+use File::Copy;
+use File::Find;
 
 sub package {
+    ::VERBOSE("Installing xulrunner");
     my $xul_tar = Archive::Tar->new($::app->{engine}{linux});
     $xul_tar->extract();
-    system("sh");
-
+    my $name = lc $::app->{name}; # It's linux, after all.
+    copy("xulrunner/xulrunner-stub", $name);
+    chmod(0755, $name); # copy doesn't preserve permissions :(
+    chdir("..");
+    my @files;
+    find(sub {push @files,$File::Find::name},'.'); 
+    ::VERBOSE("Writing archive");
+    my $tar = Archive::Tar->new();
+    $tar->add_files(@files);
+    $tar->write("/tmp/$::app->{name}-$::app->{version}.tar.bz2", COMPRESS_BZIP);
+    print("Wrote /tmp/$::app->{name}-$::app->{version}.tar.bz2\n");
 }
