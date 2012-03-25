@@ -11,48 +11,59 @@ use Config::INI::Simple;
 use Archive::Zip;
 use File::Temp qw/tempdir/;
 use File::Path qw/make_path/;
-use strict; use warnings;
-
+use strict;
+use warnings;
 
 our ($opt, $usage) = describe_options(
     "%c %o <app-directory>",
-     [ beta => "OK to download beta versions of xulrunner" ],
-     [ "xulversion=s" => "Force a specific version of xulrunner" ],
-     [ "platforms=s\@" => "Platforms to build (linux, mac, windows - can be specified multiple times; defaults to all)", { default => [qw/mac linux windows /] } ],
-     [ "xultmpdir=s" => "Temporary directory for xulrunner downloads", { default => "/tmp/xulrunners" } ],
-     [ "icns=s" => "Icon file (OS X)" ],
-     [ "identifier=s" => "Bundle identifier (OS X)" ],
-     [ "volicon=s" => "Custom volume icon (OS X)" ],
-     [ "skipownerchecks" => "Don't check the ownership of cached xulrunners (Normally a bad idea)" ],
-     [ "verbose:i" => "Be more chatty" ],
-     [ help => "print usage message and exit" ],
-);
+    [beta           => "OK to download beta versions of xulrunner"],
+    ["xulversion=s" => "Force a specific version of xulrunner"],
+    [   "platforms=s\@" =>
+          "Platforms to build (linux, mac, windows - can be specified multiple times; defaults to all)",
+        { default => [qw/mac linux windows /] }],
+    [   "xultmpdir=s" => "Temporary directory for xulrunner downloads",
+        { default => "/tmp/xulrunners" }],
+    ["icns=s"       => "Icon file (OS X)"],
+    ["identifier=s" => "Bundle identifier (OS X)"],
+    ["volicon=s"    => "Custom volume icon (OS X)"],
+    [   "skipownerchecks" =>
+          "Don't check the ownership of cached xulrunners (Normally a bad idea)"
+    ],
+    ["verbose:i" => "Be more chatty"],
+    [help        => "print usage message and exit"],);
 my %platforms = map { $_ => 1 } @{ $opt->platforms };
 print($usage->text), exit if $opt->help;
 
 if ($platforms{mac}) {
     if ($opt->icns) {
-        $opt->{icns} = File::Spec->rel2abs($opt->icns)
+        $opt->{icns} = File::Spec->rel2abs($opt->icns);
     } else {
-        die "You need to specify an application icon file (--icns) to release on Mac OS X\n" 
+        die
+          "You need to specify an application icon file (--icns) to release on Mac OS X\n";
     }
 }
 
-our $app = {}; # Container for stuff
+our $app = {};    # Container for stuff
 
-sub VERBOSE ($) { warn "@_\n" if defined $opt->verbose}
-sub DEBUG   ($) { warn "@_\n" if defined $opt->verbose and $opt->verbose > 1 }
+sub VERBOSE ($) { warn "@_\n" if defined $opt->verbose }
+sub DEBUG ($) { warn "@_\n" if defined $opt->verbose and $opt->verbose > 1 }
 
 get_app_basic_data();
 get_xulrunners();
 
 for my $platform (@{ $opt->platforms }) {
-    if ($platform eq "win") { $platform = "windows"; $platforms{windows}++ };
-    if ($platform eq "osx") { $platform = "mac";     $platforms{mac}++ };
-    if ($platform !~ (/^(windows|mac|linux)$/)) { die "Unknown platform: $platform\n" };
-    my $where = tempdir(CLEANUP => 1)."/".$app->{name}."-".$app->{version}."-".$platform;
+    if ($platform eq "win") { $platform = "windows"; $platforms{windows}++ }
+    if ($platform eq "osx") { $platform = "mac";     $platforms{mac}++ }
+    if ($platform !~ (/^(windows|mac|linux)$/)) {
+        die "Unknown platform: $platform\n";
+    }
+    my $where =
+        tempdir(CLEANUP => 1) . "/"
+      . $app->{name} . "-"
+      . $app->{version} . "-"
+      . $platform;
     if ($platform eq "mac") {
-        $where .= "/".$app->{name}.".app/Contents/Resources/";
+        $where .= "/" . $app->{name} . ".app/Contents/Resources/";
     }
     make_path($where) or die "Can't make deployment directory $where";
     VERBOSE("Building $platform installer in $where");
@@ -62,23 +73,27 @@ for my $platform (@{ $opt->platforms }) {
 }
 
 sub get_app_basic_data {
-    my $appdir = (shift @ARGV)||".";
+    my $appdir = (shift @ARGV) || ".";
     chdir $appdir;
     die "Can't find application.ini" unless -f "application.ini";
     my $ini = Config::INI::Simple->new("application.ini");
-    $app->{name} = $ini->{App}{Name};
+    $app->{name}    = $ini->{App}{Name};
     $app->{version} = $ini->{App}{Version};
-    $app->{vendor} = $ini->{App}{Vendor};
-    $app->{ini} = $ini;
+    $app->{vendor}  = $ini->{App}{Vendor};
+    $app->{ini}     = $ini;
     VERBOSE("Bundling $app->{name} v$app->{version}");
-    my @files; 
+    my @files;
+
     if (-d ".git") {
-        @files = `git ls-files`; chomp $_ for @files;
-    # Presumably other version control systems exist but I know nothing
-    # about them
+        @files = `git ls-files`;
+        chomp $_ for @files;
+
+        # Presumably other version control systems exist but I know nothing
+        # about them
         my $healthcheck = `git status --porcelain`;
         if ($healthcheck =~ /^ M/) {
-            die "Modified files in git working directory! Bailing out!\n$healthcheck";
+            die
+              "Modified files in git working directory! Bailing out!\n$healthcheck";
         } elsif ($healthcheck =~ /^\?\?/) {
             warn "WARNING: Untracked files in git working directory\n";
         }
@@ -90,74 +105,89 @@ sub get_app_basic_data {
         my $ignore = read_file(".xulpackagerignore");
         my @rules = split /\n/, $ignore;
         @files = grep {
-            my $ok = 1; for my $rule (@rules) { if (/$rule/) { $ok =0; last }}; 
-            $ok 
+            my $ok = 1;
+            for my $rule (@rules) {
+                if (/$rule/) { $ok = 0; last }
+            }
+            $ok
         } @files;
     }
     $app->{files} = \@files;
-    if (defined $opt->volicon) { $app->{volicon} = File::Spec->rel2abs($opt->volicon) }
+    if (defined $opt->volicon) {
+        $app->{volicon} = File::Spec->rel2abs($opt->volicon);
+    }
 }
 
 sub get_xulrunners {
-    VERBOSE( "Getting xulrunners" );
-    if (!-d $opt->xultmpdir) { mkdir $opt->xultmpdir or die "Can't make temp directory $opt->xultmpdir" }
-    my $ftp = Net::FTP->new("ftp.mozilla.org", Debug => 0) 
-       or die "Cannot connect to Moz: $@";
-    $ftp->hash(*STDERR,1024*1024) if $opt->verbose;
-    $ftp->login("anonymous",'-anonymous@')
-       or die "Cannot login ", $ftp->message;
-    $ftp->binary; # It's 2012 and I'm doing this.
+    VERBOSE("Getting xulrunners");
+    if (!-d $opt->xultmpdir) {
+        mkdir $opt->xultmpdir
+          or die "Can't make temp directory $opt->xultmpdir";
+    }
+    my $ftp = Net::FTP->new("ftp.mozilla.org", Debug => 0)
+      or die "Cannot connect to Moz: $@";
+    $ftp->hash(*STDERR, 1024 * 1024) if $opt->verbose;
+    $ftp->login("anonymous", '-anonymous@')
+      or die "Cannot login ", $ftp->message;
+    $ftp->binary;    # It's 2012 and I'm doing this.
     $ftp->cwd("/pub/mozilla.org/xulrunner/releases/")
-       or die "Cannot change working directory ", $ftp->message;
-    my $ver = $opt->xulversion || do { 
+      or die "Cannot change working directory ", $ftp->message;
+    my $ver = $opt->xulversion || do {
         my @vers = sort versioncmp $ftp->ls();
-        if (!$opt->beta) { @vers = grep { !/b/ } @vers }
+        if (!$opt->beta) {
+            @vers = grep { !/b/ } @vers;
+        }
         $vers[-1];
     };
-    die "Would package xulrunner $ver but max Gecko version is $app->{ini}{Gecko}{MaxVersion}; fix ini file?\n"
-        if versioncmp($ver, $app->{ini}{Gecko}{MaxVersion}) == 1;
-    die "Would package xulrunner $ver but min Gecko version is $app->{ini}{Gecko}{MinVersion}; fix ini file?\n"
-        if versioncmp($app->{ini}{Gecko}{MinVersion}, $ver) == 1;
+    die
+      "Would package xulrunner $ver but max Gecko version is $app->{ini}{Gecko}{MaxVersion}; fix ini file?\n"
+      if versioncmp($ver, $app->{ini}{Gecko}{MaxVersion}) == 1;
+    die
+      "Would package xulrunner $ver but min Gecko version is $app->{ini}{Gecko}{MinVersion}; fix ini file?\n"
+      if versioncmp($app->{ini}{Gecko}{MinVersion}, $ver) == 1;
     $ftp->cwd("$ver/runtimes") or die "Can't find version $ver";
     my @files = $ftp->ls;
     for (@files) {
-        my $dest = $opt->xultmpdir."/$_";
+        my $dest = $opt->xultmpdir . "/$_";
         if (-f $dest && !-o $dest && !$opt->skipownerchecks) {
-           die "DANGER! $dest exists but current user doesn't own it; check it wasn't poisoned! (--skipownerchecks to skip)\n";
+            die
+              "DANGER! $dest exists but current user doesn't own it; check it wasn't poisoned! (--skipownerchecks to skip)\n";
         }
         next unless /(pkg\.dmg|win32\.zip|tar\.bz2)$/;
-        my $plat; 
+        my $plat;
         if (/pkg\.dmg$/)   { $plat = "mac"; }
-        if (/win32\.zip$/) { $plat = "windows"; } 
-        if (/tar\.bz2$/)   { $plat = "linux";} 
-        next unless $platforms{$plat}; 
+        if (/win32\.zip$/) { $plat = "windows"; }
+        if (/tar\.bz2$/)   { $plat = "linux"; }
+        next unless $platforms{$plat};
         $app->{engine}{$plat} = $dest;
-        next if -f $dest; 
+        next if -f $dest;
         VERBOSE "Getting $plat runtime $_";
         local $SIG{INT} = sub { unlink($dest); exit 1 };
         $ftp->get($_, $dest) or (unlink $dest), die "Couldn't download $_";
     }
-    $app->{xulversion} = $ver; # Store this, we need it later
-}   
+    $app->{xulversion} = $ver;    # Store this, we need it later
+}
 
 sub layout_pristine_installdir {
     my $where = shift;
     VERBOSE(" Copying files to distribution directory");
-    for (@{$app->{files}}) {
+    for (@{ $app->{files} }) {
         DEBUG("  Copying $_ -> $where/$_");
-        if (!-d dirname( "$where/$_") ) {
-            make_path(dirname("$where/$_")) or die $!; 
+        if (!-d dirname("$where/$_")) {
+            make_path(dirname("$where/$_")) or die $!;
         }
-        copy ($_, $where."/".$_) or die $!;
+        copy($_, $where . "/" . $_) or die $!;
     }
 }
 
 package XulPackager::mac;
 use File::Temp qw/tempdir/;
 use File::Copy;
+
 sub package {
     if ($^O ne "darwin") {
-        warn "I'm sorry, I can only build OS X packages on OS X because I need to mount and create .dmg files";
+        warn
+          "I'm sorry, I can only build OS X packages on OS X because I need to mount and create .dmg files";
         return;
     }
     create_info_plist();
@@ -167,7 +197,8 @@ sub package {
 }
 
 sub create_info_plist {
-    my $identifier = $::opt->identifier || "org.mozilla.xulrunner.".$::app->{name};
+    my $identifier = $::opt->identifier
+      || "org.mozilla.xulrunner." . $::app->{name};
     open PLIST, "> ../Info.plist" or die $!;
     print PLIST <<EOF;
 <?xml version="1.0" encoding="UTF-8"?>
@@ -195,9 +226,13 @@ sub copy_xul_framework {
     ::VERBOSE("Installing xulrunner");
     mkdir("../Frameworks") or die "Couldn't make Frameworks dir: $!";
     chdir("../Frameworks") or die "Couldn't change to Frameworks dir: $!";
-    die "Couldn't find xulrunner (can't happen?)\n" unless -f $::app->{engine}{mac};
-    system("hdiutil", "attach", "-quiet", "-noautoopen", "-mountpoint",$tmp, $app->{engine}{mac});
-    my ($pkg) = glob("$tmp/*.pkg"); die "Didn't mount DMG?\n" unless -d $pkg;
+    die "Couldn't find xulrunner (can't happen?)\n"
+      unless -f $::app->{engine}{mac};
+    system("hdiutil", "attach", "-quiet", "-noautoopen", "-mountpoint", $tmp,
+        $app->{engine}{mac});
+    my ($pkg) = glob("$tmp/*.pkg");
+    die "Didn't mount DMG?\n" unless -d $pkg;
+
     # Do the manual install
     system("pax", "-zrf", "$pkg/Contents/Archive.pax.gz");
     system("hdiutil", "detach", $tmp, "-quiet");
@@ -209,7 +244,7 @@ sub copy_stub_executable {
     my $path = "Frameworks/XUL.framework/Versions/Current/";
     die "Could't find xulrunner?\n" unless -f "$path/xulrunner";
     system("ditto", "$path/xulrunner", "MacOS/xulrunner");
-    if ($::app->{xulversion} > 9) { # Wait, there are more
+    if ($::app->{xulversion} > 9) {    # Wait, there are more
         system("ditto", "$path/libmozutils.dylib", "MacOS/libmozutils.dylib");
     }
 
@@ -217,20 +252,24 @@ sub copy_stub_executable {
 
 sub put_app_in_dmg {
     my $tmp = tempdir(CLEANUP => 1);
-    my $size = `du -sk .`; $size =~ /(\d+)/; $size = $1*1.1; # For luck
-    my $dmg = $::app->{name}."-".$::app->{version}.".dmg";
+    my $size = `du -sk .`;
+    $size =~ /(\d+)/;
+    $size = $1 * 1.1;                  # For luck
+    my $dmg = $::app->{name} . "-" . $::app->{version} . ".dmg";
     ::VERBOSE("Placing app into /tmp/$dmg");
     if (-f "/tmp/$dmg") {
         die "Whoa there! /tmp/$dmg already exists!\n";
     }
 
     ::DEBUG(" Creating a ${size}k DMG file $dmg");
-    system("hdiutil", "create", "/tmp/$dmg", 
-        "-size"    => $size."k",
+    system(
+        "hdiutil", "create", "/tmp/$dmg",
+        "-size"    => $size . "k",
         "-fs"      => "HFS+",
         "-volname" => "$app->{name} $app->{version}",
         "-quiet");
-    system("hdiutil", "attach", "-quiet", "-noautoopen", "-mountpoint",$tmp, "/tmp/$dmg");
+    system("hdiutil", "attach", "-quiet", "-noautoopen", "-mountpoint", $tmp,
+        "/tmp/$dmg");
     chdir("../..");
 
     ::DEBUG(" Copying in contents");
@@ -243,11 +282,11 @@ sub put_app_in_dmg {
 
     system("hdiutil", "detach", $tmp, "-quiet");
     ::DEBUG(" Converting to compressed read-only DMG");
-    system("hdiutil", "convert", "/tmp/$dmg", 
+    system(
+        "hdiutil", "convert", "/tmp/$dmg",
         "-format" => "UDZO",
-        "-o" => "/tmp/$dmg.udzo.dmg",
-        "-quiet"
-    ); 
+        "-o"      => "/tmp/$dmg.udzo.dmg",
+        "-quiet");
     if (-f "/tmp/$dmg.udzo.dmg") {
         unlink("/tmp/$dmg") && rename("/tmp/$dmg.udzo.dmg", "/tmp/$dmg");
     }
@@ -261,8 +300,10 @@ use File::Find;
 
 sub package {
     if (`makensis -VERSION` !~ /^v/) {
-        warn "I need makensis installed to make Windows installers. I can't find it, so skipping.\n";
-        warn "Try installing homebrew and 'brew install makensis'\n" if $^O eq "darwin";
+        warn
+          "I need makensis installed to make Windows installers. I can't find it, so skipping.\n";
+        warn "Try installing homebrew and 'brew install makensis'\n"
+          if $^O eq "darwin";
         return;
     }
     copy_xul_framework();
@@ -274,34 +315,40 @@ sub copy_xul_framework {
     ::VERBOSE("Installing xulrunner");
     my $xul_zip = Archive::Zip->new($::app->{engine}{windows});
     $xul_zip->extractTree();
-    copy("xulrunner/xulrunner-stub.exe", $::app->{name}.".exe");
-    copy("xulrunner/libmozutils.dll", "libmozutils.dll")
-        if $::app->{xulversion} > 9;
+    copy("xulrunner/xulrunner-stub.exe", $::app->{name} . ".exe");
+    copy("xulrunner/libmozutils.dll",    "libmozutils.dll")
+      if $::app->{xulversion} > 9;
 }
 
 sub set_icon {
     if (-f "chrome/branding/icon48.png") {
-        system("convert", "chrome/branding/icon48.png", $::app->{name}.".ico");
-        Win32::Exe->new($::app->{name}.".exe")->update(
-            icon => $::app->{name}.".ico"
-        );
+        system("convert", "chrome/branding/icon48.png",
+            $::app->{name} . ".ico");
+        Win32::Exe->new($::app->{name} . ".exe")
+          ->update(icon => $::app->{name} . ".ico");
     }
 }
 
 sub make_installer {
     my ($part1, $part2, $part3);
-    find({no_chdir => 1,
-            wanted => sub { $a=$_;s/..//; s/\//\\/g;
-                $part1 .= -d $a ?
-                        "SetOutPath \"\$INSTDIR\\"
-                       : "File \"";
+    find({  no_chdir => 1,
+            wanted   => sub {
+                $a = $_;
+                s/..//;
+                s/\//\\/g;
+                $part1 .=
+                  -d $a
+                  ? "SetOutPath \"\$INSTDIR\\"
+                  : "File \"";
                 $part1 .= "$_\"\n";
                 if (-d $a) {
                     $part3 .= qq{ RMDir "\$INSTDIR\\$_"\n};
                 } else {
                     $part2 .= qq{ Delete "\$INSTDIR\\$_"\n};
                 }
-            }}, ".");
+              }
+        },
+        ".");
     open OUT, ">installer.nsis" or die $!;
     print OUT <<EOF;
 !define VERSION "$::app->{version}" 
@@ -374,12 +421,12 @@ sub package {
     ::VERBOSE("Installing xulrunner");
     my $xul_tar = Archive::Tar->new($::app->{engine}{linux});
     $xul_tar->extract();
-    my $name = lc $::app->{name}; # It's linux, after all.
+    my $name = lc $::app->{name};    # It's linux, after all.
     copy("xulrunner/xulrunner-stub", $name);
-    chmod(0755, $name); # copy doesn't preserve permissions :(
+    chmod(0755, $name);              # copy doesn't preserve permissions :(
     chdir("..");
     my @files;
-    find(sub {push @files,$File::Find::name},'.'); 
+    find(sub { push @files, $File::Find::name }, '.');
     ::VERBOSE("Writing archive");
     my $tar = Archive::Tar->new();
     $tar->add_files(@files);
