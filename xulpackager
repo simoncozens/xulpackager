@@ -156,6 +156,10 @@ package XulPackager::mac;
 use File::Temp qw/tempdir/;
 use File::Copy;
 sub package {
+    if ($^O ne "darwin") {
+        warn "I'm sorry, I can only build OS X packages on OS X because I need to mount and create .dmg files";
+        return;
+    }
     create_info_plist();
     copy_xul_framework();
     copy_stub_executable();
@@ -256,6 +260,11 @@ use Win32::Exe;
 use File::Find;
 
 sub package {
+    if (`makensis -VERSION` !~ /^v/) {
+        warn "I need makensis installed to make Windows installers. I can't find it, so skipping.\n";
+        warn "Try installing homebrew and 'brew install makensis'\n" if $^O eq "darwin";
+        return;
+    }
     copy_xul_framework();
     set_icon();
     make_installer();
