@@ -32,3 +32,6 @@ Usage:
 
 The `--verbose` option takes an optional numeric parameter;
 `--verbose=2` is even chattier.
+
+To install the required Perl modules to make this work, run `perl Makefile.PL`
+and `make`.
