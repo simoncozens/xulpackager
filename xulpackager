@@ -25,6 +25,8 @@ our ($opt, $usage) = describe_options(
     [   "xultmpdir=s" => "Temporary directory for xulrunner downloads",
         { default => "/tmp/xulrunners" }],
     ["icns=s"       => "Icon file (OS X)"],
+    ["arch=s"       => "Architecture for Linux build (i686 or x86_64)",
+        { default => "i686" }],
     ["identifier=s" => "Bundle identifier (OS X)"],
     ["volicon=s"    => "Custom volume icon (OS X)"],
     [   "skipownerchecks" =>
@@ -149,6 +151,7 @@ sub get_xulrunners {
       "Would package xulrunner $ver but min Gecko version is $app->{ini}{Gecko}{MinVersion}; fix ini file?\n"
       if versioncmp($app->{ini}{Gecko}{MinVersion}, $ver) == 1;
     $ftp->cwd("$ver/runtimes") or die "Can't find version $ver";
+    my $arch = $opt->arch;
     my @files = $ftp->ls;
     for (@files) {
         my $dest = $opt->xultmpdir . "/$_";
@@ -156,7 +159,7 @@ sub get_xulrunners {
             die
               "DANGER! $dest exists but current user doesn't own it; check it wasn't poisoned! (--skipownerchecks to skip)\n";
         }
-        next unless /(pkg\.dmg|win32\.zip|tar\.bz2)$/;
+        next unless /(pkg\.dmg|win32\.zip|$arch\.tar\.bz2)$/;
         my $plat;
         if (/pkg\.dmg$/)   { $plat = "mac"; }
         if (/win32\.zip$/) { $plat = "windows"; }
